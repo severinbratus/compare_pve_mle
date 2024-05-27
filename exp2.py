@@ -2,12 +2,20 @@ import jax
 import jax.numpy as jnp
 import jax.random as jrng
 import optax
+
 from ray import tune
+
 import random
 import numpy as np
+
 import pickle
 import os
 import sys
+import time
+from itertools import *
+
+import pydtmc as pymc
+
 import gridworld
 import policies as policies_module
 import value_and_policy_iteration as vpi
@@ -15,7 +23,7 @@ import value_and_policy_iteration as vpi
 from util import *
 from main import *
 
-from itertools import *
+
 
 np.random.seed(42);
 random.seed(42)
@@ -53,12 +61,15 @@ def compare_pve_mle(config):
     values_train = values[:split]
     values_test = values[split:]
 
+    pve_data = PveData((policies_train, values_train),
+                       (policies_test, values_test))
+
     # fit models
-    m_pve = fit_model_pve(policies_train, values_train, true_m, config)
-    # m_mle = fit_model_mle(policies_train, true_m, config)
+    # m_pve = fit_model_pve(pve_data, true_m, config)
+    m_mle = fit_model_mle(pve_data, true_m, config)
 
     # evaluate models
-    eval_model_pred_err(policies_test, values_test, m_pve, config)
+    # eval_model_pred_err(policies_test, values_test, m_pve, config)
 
 
 def eval_model_pred_err(policies, values, m, config):
@@ -68,7 +79,9 @@ def eval_model_pred_err(policies, values, m, config):
     return pred_err
 
 
-def fit_model_pve(policies, values, true_m, config):
+def fit_model_pve(pve_data, true_m, config):
+
+    (policies, values), (policies_test, values_test) = pve_data
 
     true_r, true_p = true_m
     num_states, num_actions = np.shape(true_r)
@@ -109,11 +122,10 @@ def fit_model_pve(policies, values, true_m, config):
         if ts % config['eval_model_every'] == 0:
             r, p = params_to_model(model_params, config)
             r, p = np.array(r), np.array(p)
-            _, pi = vpi.run_value_iteration(
-                config['gamma'], r, p, np.zeros([num_states]), threshold=1e-4, return_policy=True)
-            value_pi = vpi.exact_policy_evaluation(config['gamma'], pi, true_r, true_p)
-            report['mean_value'] = np.mean(value_pi)
-            report['ts'] = ts
+            err_train = eval_model_pred_err(policies, values, (r, p), config)
+            err_test = eval_model_pred_err(policies_test, values_test, (r, p), config)
+            report['err_train'] = err_train
+            report['err_test'] = err_test
         if ts % config['ping_every'] == 0:
             print(f'{ts=}')
         
@@ -125,14 +137,119 @@ def fit_model_pve(policies, values, true_m, config):
             # tune.report(**to_report)
             report['ts'] = ts
             reports.append(report)
-    dump(reports, 'reports')
+    dump(reports, 'last_reports_pve')
 
     return params_to_model(model_params, config)
 
 
-def main2():
+def mle_loss(params, distr_batch, config):
+    _, p = params_to_model(params, config)
+    
+    #l_pi = jnp.einsum('saz,saz->', D_pi, - jnp.log(p))
+    l_pi = jnp.einsum('bsaz,saz->', distr_batch, - jnp.log(p))
+    l_pi /= distr_batch.shape[0]
+    # l_pi = - jnp.sum(distr_batch * jnp.log(p))
+    # l_pi = jnp.mean(jax.vmap(lambda D_pi: - jnp.sum(D_pi * jnp.log(p)))(distr_batch))
 
-    every = 100
+    return l_pi
+
+
+def get_distrs(policies, true_p):
+    return [get_distr(pi, true_p) for pi in policies]
+    
+
+def get_distr(pi, P):
+    P_pi = np.einsum('sa,saz->sz', pi, P)
+
+    mc = pymc.MarkovChain(P_pi)
+    d_pi = mc.stationary_distributions[0]
+
+    f_pi = np.einsum('s,sa->sa', d_pi, pi)
+    D_pi = np.einsum('sa,saz->saz', f_pi, P)
+    D_pi /= np.sum(D_pi)
+
+    return D_pi
+
+
+def update_mle(params, state, opt, distr_batch, config):
+    loss, grads = jax.value_and_grad(mle_loss)(params, distr_batch, config)
+    updates, state = opt.update(grads, state, params)
+    params = optax.apply_updates(params, updates)
+    return params, state, loss
+
+
+def fit_model_mle(pve_data, true_m, config):
+
+    (policies, values), (policies_test, values_test) = pve_data
+
+    true_r, true_p = true_m
+    num_states, num_actions = np.shape(true_r)
+
+    # initialize jax stuff
+    key = jrng.PRNGKey(config['seed'])
+    key, model_params = init_model(key, num_states, num_actions, config)
+    # NOTE: give away true r
+    model_params = (true_r, *model_params[1:])
+
+    opt = optax.adam(config['learning_rate'])
+    state = opt.init(model_params)
+
+    def _update_mle(params, state, D):
+         return update_mle(params, state, opt, D, config)
+    _update_mle = jax.jit(_update_mle)
+
+    distrs = np.stack(get_distrs(policies, true_p))
+    print(f'{len(policies)=}')
+    print(f'{len(distrs)=}')
+
+    last_time = time.time()
+    reports = []
+    stored_models = []
+    # stored_models_path = os.path.join(tune.get_trial_dir(), 'models.pickle')
+    for ts in range(1, config['mle_n_iters']+1):
+        idx = np.random.randint(0, len(policies), size=[config['batch_size']])
+        # idx = np.random.randint(0, len(policies))
+        # D = Ds[idx]
+        distr_batch = distrs[idx, :, :, :]
+
+        model_params, state, loss = _update_mle(model_params, state, distr_batch)
+
+        report = {}
+        if ts % config['store_model_every'] == 0:
+            r, p = params_to_model(model_params, config)
+            stored_models.append((ts, r, p))
+        if ts % config['store_loss_every'] == 0:
+            report['loss'] = float(loss)
+        if ts % config['eval_model_every'] == 0:
+            r, p = params_to_model(model_params, config)
+            r, p = np.array(r), np.array(p)
+            err_train = eval_model_pred_err(policies, values, (r, p), config)
+            err_test = eval_model_pred_err(policies_test, values_test, (r, p), config)
+            report['err_train'] = err_train
+            report['err_test'] = err_test
+            report['diff_p'] = np.mean(np.abs(p - true_p))
+        if ts % config['ping_every'] == 0:
+            now = time.time()
+            elapsed = now - last_time
+            print(f'{ts=} {elapsed=}')
+            last_time = now
+
+        
+        if len(stored_models) > 0 and ts == (config['num_iters'] - 1):
+            with open(stored_models_path, 'wb') as f:
+                pickle.dump(stored_models, f) 
+            report['model_path'] = stored_models_path
+        if len(report) > 0:
+            # tune.report(**to_report)
+            report['ts'] = ts
+            reports.append(report)
+    dump(reports, 'last_reports_mle')
+
+    return params_to_model(model_params, config)
+
+
+
+def main2():
 
     space = {
         # FIXME
@@ -146,9 +263,11 @@ def main2():
         # 'model_rank': tune.grid_search([20, 30, 40, 50, 60, 70, 80, 90, 100, 104]),
         'model_rank': 80,
         'learning_rate': 5e-4,
-        'eval_model_every': 10_000,
-        'store_loss_every': every,
-        'restrict_capacity': True,
+        'eval_model_every': 300,
+        'store_loss_every': 100,
+        # 'restrict_capacity': True,
+        # fixme
+        'restrict_capacity': False,
         'store_model_every': np.inf,
         'uni_init': 5,
         'use_vip': False,
@@ -156,9 +275,9 @@ def main2():
         # fixme
         'n_policies': 10,
         'policy_dataset_split': .5,
-        'pve_n_iters': 10_000,
-        'mle_n_iters': 30_000,
-        'ping_every': every,
+        'pve_n_iters': 100_000,
+        'mle_n_iters': 100_000,
+        'ping_every': 1000,
     }
 
     # local_dir, seed = sys.argv[1:]
