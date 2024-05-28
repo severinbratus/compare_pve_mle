@@ -1,6 +1,8 @@
+import sys
+
 template = """#!/bin/sh
 
-#SBATCH --job-name=cmp_{mkey}
+#SBATCH --job-name=N{n:03}K{k:03}
 #SBATCH --partition=gpu
 #SBATCH --account=innovation
 #SBATCH --time=03:55:00
@@ -21,7 +23,7 @@ module load py-pandas
 python -m pip install --user jax optax ray[tune] flax PyDTMC
 
 cd compare_pve_mle
-srun python exp2.py {n} {k} > out-{mkey}.log
+srun python exp2.py {n} {k} > out_{mkey}.log
 """
 
 def gen_job(n, k):
@@ -32,10 +34,17 @@ def gen_job(n, k):
 range_n = [8, 16, 32, 64, 128]
 range_k = [10, 30, 50, 70, 90, 104]
 
-for n in range_n:
-    for k in range_k:
-        gen_job(n, k)
-        
+
+args = sys.argv[1:]
+
+if args:
+    n, k = args
+    gen_job(n, k)
+else:
+    for n in range_n:
+        for k in range_k:
+            gen_job(n, k)
+            
 
 
 
