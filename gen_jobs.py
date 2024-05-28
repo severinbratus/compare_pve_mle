@@ -39,6 +39,8 @@ args = sys.argv[1:]
 
 if args:
     n, k = args
+    n = int(n)
+    k = int(k)
     gen_job(n, k)
 else:
     for n in range_n:
