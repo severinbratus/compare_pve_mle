@@ -231,10 +231,7 @@ def maybe_report(ts, reports, pve_data, model_params, mtype, loss, true_p, confi
         report['err_test'] = err_test
         report['diff_p'] = np.mean(np.abs(p - true_p))
     if ts % config['ping_every'] == 0:
-        now = time.time()
-        elapsed = now - last_time
-        print(f'{ts=} {elapsed=}')
-        last_time = now
+        print(f'{ts=}')
     if ts % config['dump_every'] == 0 or ts == config[f'{mtype}_n_iters']:
         dump(reports, f'reports_{mkey}_T{ts:06}')
         dump(params_to_model(model_params, config), f'model_{mkey}_T{ts:07}')
