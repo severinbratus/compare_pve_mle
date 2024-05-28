@@ -67,9 +67,15 @@ def compare_pve_mle(config):
     # fit models
     # m_pve = fit_model_pve(pve_data, true_m, config)
     m_mle = fit_model_mle(pve_data, true_m, config)
+    m_pve = fit_model_pve(pve_data, true_m, config)
 
     # evaluate models
-    # eval_model_pred_err(policies_test, values_test, m_pve, config)
+    err_mle = eval_model_pred_err(policies_test, values_test, m_mle, config)
+    err_pve = eval_model_pred_err(policies_test, values_test, m_pve, config)
+    print()
+    print(f"{err_mle=}")
+    print(f"{err_pve=}")
+    print("The better model is", "MLE" if err_mle < err_pve else "PVE")
 
 
 def eval_model_pred_err(policies, values, m, config):
@@ -79,9 +85,15 @@ def eval_model_pred_err(policies, values, m, config):
     return pred_err
 
 
+@time_it
 def fit_model_pve(pve_data, true_m, config):
 
-    (policies, values), (policies_test, values_test) = pve_data
+    print()
+    print('Fitting PVE')
+    print(f'{config["n_policies"]=}')
+    print(f'{config["model_rank"]=}')
+
+    (policies, values), _ = pve_data
 
     true_r, true_p = true_m
     num_states, num_actions = np.shape(true_r)
@@ -103,8 +115,6 @@ def fit_model_pve(pve_data, true_m, config):
     _update_fpve = jax.jit(_update_fpve)
 
     reports = []
-    stored_models = []
-    # stored_models_path = os.path.join(tune.get_trial_dir(), 'models.pickle')
     for ts in range(1, config['pve_n_iters']+1):
         idx = np.random.randint(0, len(policies), size=[config['batch_size']])
         pi_batch = policies[idx, :, :]
@@ -113,31 +123,8 @@ def fit_model_pve(pve_data, true_m, config):
             model_params, state, loss = _update_fpve(model_params, state, pi_batch, v_batch)
         else:
             model_params, state, loss = _update_ve(model_params, state, pi_batch, v_batch)
-        report = {}
-        if ts % config['store_model_every'] == 0:
-            r, p = params_to_model(model_params, config)
-            stored_models.append((ts, r, p))
-        if ts % config['store_loss_every'] == 0:
-            report['loss'] = float(loss)
-        if ts % config['eval_model_every'] == 0:
-            r, p = params_to_model(model_params, config)
-            r, p = np.array(r), np.array(p)
-            err_train = eval_model_pred_err(policies, values, (r, p), config)
-            err_test = eval_model_pred_err(policies_test, values_test, (r, p), config)
-            report['err_train'] = err_train
-            report['err_test'] = err_test
-        if ts % config['ping_every'] == 0:
-            print(f'{ts=}')
-        
-        if len(stored_models) > 0 and ts == (config['num_iters'] - 1):
-            with open(stored_models_path, 'wb') as f:
-                pickle.dump(stored_models, f) 
-            report['model_path'] = stored_models_path
-        if len(report) > 0:
-            # tune.report(**to_report)
-            report['ts'] = ts
-            reports.append(report)
-    dump(reports, 'last_reports_pve')
+
+        maybe_report(ts, reports, pve_data, model_params, "pve", loss, true_p, config)
 
     return params_to_model(model_params, config)
 
@@ -178,9 +165,15 @@ def update_mle(params, state, opt, distr_batch, config):
     return params, state, loss
 
 
+@time_it
 def fit_model_mle(pve_data, true_m, config):
 
-    (policies, values), (policies_test, values_test) = pve_data
+    print()
+    print('Fitting MLE')
+    print(f'{config["n_policies"]=}')
+    print(f'{config["model_rank"]=}')
+
+    (policies, _), _ = pve_data
 
     true_r, true_p = true_m
     num_states, num_actions = np.shape(true_r)
@@ -199,13 +192,8 @@ def fit_model_mle(pve_data, true_m, config):
     _update_mle = jax.jit(_update_mle)
 
     distrs = np.stack(get_distrs(policies, true_p))
-    print(f'{len(policies)=}')
-    print(f'{len(distrs)=}')
 
-    last_time = time.time()
     reports = []
-    stored_models = []
-    # stored_models_path = os.path.join(tune.get_trial_dir(), 'models.pickle')
     for ts in range(1, config['mle_n_iters']+1):
         idx = np.random.randint(0, len(policies), size=[config['batch_size']])
         # idx = np.random.randint(0, len(policies))
@@ -214,44 +202,52 @@ def fit_model_mle(pve_data, true_m, config):
 
         model_params, state, loss = _update_mle(model_params, state, distr_batch)
 
-        report = {}
-        if ts % config['store_model_every'] == 0:
-            r, p = params_to_model(model_params, config)
-            stored_models.append((ts, r, p))
-        if ts % config['store_loss_every'] == 0:
-            report['loss'] = float(loss)
-        if ts % config['eval_model_every'] == 0:
-            r, p = params_to_model(model_params, config)
-            r, p = np.array(r), np.array(p)
-            err_train = eval_model_pred_err(policies, values, (r, p), config)
-            err_test = eval_model_pred_err(policies_test, values_test, (r, p), config)
-            report['err_train'] = err_train
-            report['err_test'] = err_test
-            report['diff_p'] = np.mean(np.abs(p - true_p))
-        if ts % config['ping_every'] == 0:
-            now = time.time()
-            elapsed = now - last_time
-            print(f'{ts=} {elapsed=}')
-            last_time = now
-
-        
-        if len(stored_models) > 0 and ts == (config['num_iters'] - 1):
-            with open(stored_models_path, 'wb') as f:
-                pickle.dump(stored_models, f) 
-            report['model_path'] = stored_models_path
-        if len(report) > 0:
-            # tune.report(**to_report)
-            report['ts'] = ts
-            reports.append(report)
-    dump(reports, 'last_reports_mle')
+        maybe_report(ts, reports, pve_data, model_params, "mle", loss, true_p, config)
 
     return params_to_model(model_params, config)
 
 
+def maybe_report(ts, reports, pve_data, model_params, mtype, loss, true_p, config):
+    (policies, values), (policies_test, values_test) = pve_data
+
+    mkey = f'{mtype}_N{config["n_policies"]:03}_K{config["model_rank"]:03}'
+
+    report = {}
+    if ts % config['store_loss_every'] == 0:
+        loss = float(loss)
+        report['loss'] = loss
+        # early stopping
+        # es.update(loss)
+        # if es.should_stop:
+        #     print(f'early stop @ {ts=}')
+        #     break
+
+    if ts % config['eval_model_every'] == 0:
+        r, p = params_to_model(model_params, config)
+        r, p = np.array(r), np.array(p)
+        err_train = eval_model_pred_err(policies, values, (r, p), config)
+        err_test = eval_model_pred_err(policies_test, values_test, (r, p), config)
+        report['err_train'] = err_train
+        report['err_test'] = err_test
+        report['diff_p'] = np.mean(np.abs(p - true_p))
+    if ts % config['ping_every'] == 0:
+        now = time.time()
+        elapsed = now - last_time
+        print(f'{ts=} {elapsed=}')
+        last_time = now
+    if ts % config['dump_every'] == 0 or ts == config[f'{mtype}_n_iters']:
+        dump(reports, f'reports_{mkey}_T{ts:06}')
+        dump(params_to_model(model_params, config), f'model_{mkey}_T{ts:07}')
+    
+    if len(report) > 0:
+        # tune.report(**to_report)
+        report['ts'] = ts
+        reports.append(report)
+
 
 def main2():
 
-    space = {
+    config = {
         # FIXME
         # 'seed': tune.randint(0, 500_000),
         'seed': 0,
@@ -263,11 +259,10 @@ def main2():
         # 'model_rank': tune.grid_search([20, 30, 40, 50, 60, 70, 80, 90, 100, 104]),
         'model_rank': 80,
         'learning_rate': 5e-4,
-        'eval_model_every': 300,
+        'eval_model_every': 250,
         'store_loss_every': 100,
         # 'restrict_capacity': True,
-        # fixme
-        'restrict_capacity': False,
+        'restrict_capacity': True,
         'store_model_every': np.inf,
         'uni_init': 5,
         'use_vip': False,
@@ -277,8 +272,16 @@ def main2():
         'policy_dataset_split': .5,
         'pve_n_iters': 100_000,
         'mle_n_iters': 100_000,
-        'ping_every': 1000,
+        'ping_every': 2500,
+        'dump_every': np.inf,
+        'es_delta': 1e-2,
+        'es_patience': 3,
     }
+
+    config['n_policies'] = int(sys.argv[1])
+    config['model_rank'] = int(sys.argv[2])
+    if len(sys.argv) > 3:
+        config['mle_n_iters'] = config['pve_n_iters'] = int(sys.argv[3])
 
     # local_dir, seed = sys.argv[1:]
     # seed = int(seed)
@@ -286,7 +289,7 @@ def main2():
 
     random.seed(seed)
     np.random.seed(seed)
-    num_samples = 10
+    # num_samples = 10
     # analysis = tune.run(run_experiment_2,
     #                     num_samples=num_samples,
     #                     config=space,
@@ -294,7 +297,7 @@ def main2():
     #                     resources_per_trial={'cpu': 1},
     #                     fail_fast=True)
 
-    compare_pve_mle(space)
+    compare_pve_mle(config)
 
 
 if __name__ == '__main__':
