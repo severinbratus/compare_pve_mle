@@ -23,17 +23,18 @@ module load py-pandas
 python -m pip install --user jax optax ray[tune] flax PyDTMC
 
 cd compare_pve_mle
-srun python exp2.py {n} {k} > out_{mkey}.log
+srun python exp2.py {n} {k} {n_seeds}> out_{mkey}.log
 """
+
+n_seeds = 10
 
 def gen_job(n, k):
     mkey = f"N{n:03}_K{k:03}"
     with open(f'job_{mkey}.sh', 'w') as f:
-        f.write(template.format(mkey=mkey, n=n, k=k))
+        f.write(template.format(mkey=mkey, n=n, k=k, n_seeds=n_seeds))
 
 range_n = [8, 16, 32, 64, 128]
 range_k = [10, 30, 50, 70, 90, 104]
-
 
 args = sys.argv[1:]
 

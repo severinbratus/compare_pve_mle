@@ -24,11 +24,6 @@ from util import *
 from main import *
 
 
-
-np.random.seed(42);
-random.seed(42)
-
-
 def compare_pve_mle(config):
     np.random.seed(config['seed'])
     random.seed(config['seed'])
@@ -66,8 +61,8 @@ def compare_pve_mle(config):
 
     # fit models
     # m_pve = fit_model_pve(pve_data, true_m, config)
-    m_mle = fit_model_mle(pve_data, true_m, config)
-    m_pve = fit_model_pve(pve_data, true_m, config)
+    m_mle, reps_mle = fit_model_mle(pve_data, true_m, config)
+    m_pve, reps_pve = fit_model_pve(pve_data, true_m, config)
 
     # evaluate models
     err_mle = eval_model_pred_err(policies_test, values_test, m_mle, config)
@@ -76,6 +71,8 @@ def compare_pve_mle(config):
     print(f"{err_mle=}")
     print(f"{err_pve=}")
     print("The better model is", "MLE" if err_mle < err_pve else "PVE")
+
+    return (m_mle, reps_mle), (m_pve, reps_pve)
 
 
 def eval_model_pred_err(policies, values, m, config):
@@ -126,7 +123,7 @@ def fit_model_pve(pve_data, true_m, config):
 
         maybe_report(ts, reports, pve_data, model_params, "pve", loss, true_p, config)
 
-    return params_to_model(model_params, config)
+    return params_to_model(model_params, config), reports
 
 
 def mle_loss(params, distr_batch, config):
@@ -204,7 +201,7 @@ def fit_model_mle(pve_data, true_m, config):
 
         maybe_report(ts, reports, pve_data, model_params, "mle", loss, true_p, config)
 
-    return params_to_model(model_params, config)
+    return params_to_model(model_params, config), reports
 
 
 def maybe_report(ts, reports, pve_data, model_params, mtype, loss, true_p, config):
@@ -275,17 +272,25 @@ def main2():
         'es_patience': 3,
     }
 
-    config['n_policies'] = int(sys.argv[1])
-    config['model_rank'] = int(sys.argv[2])
-    if len(sys.argv) > 3:
-        config['mle_n_iters'] = config['pve_n_iters'] = int(sys.argv[3])
-
+    n = config['n_policies'] = int(sys.argv[1])
+    k = config['model_rank'] = int(sys.argv[2])
+    config['n_seeds'] = n_seeds = int(sys.argv[3])
+    if len(sys.argv) > 4:
+        config['mle_n_iters'] = config['pve_n_iters'] = int(sys.argv[4])
+    
     # local_dir, seed = sys.argv[1:]
     # seed = int(seed)
-    seed = 0
+    seeds = list(range(n_seeds))
+    results = []
+    for seed in seeds:
+        print()
+        print(f'{seed=}')
+        config['seed'] = seed
+        result = compare_pve_mle(config)
+        results.append(result)
+    key = f'N{n:03}_K{k:03}'
+    dump(results, f'results_{key}_S{n_seeds:03}')
 
-    random.seed(seed)
-    np.random.seed(seed)
     # num_samples = 10
     # analysis = tune.run(run_experiment_2,
     #                     num_samples=num_samples,
@@ -293,8 +298,6 @@ def main2():
     #                     local_dir=local_dir,
     #                     resources_per_trial={'cpu': 1},
     #                     fail_fast=True)
-
-    compare_pve_mle(config)
 
 
 if __name__ == '__main__':
