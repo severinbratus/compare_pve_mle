@@ -1,4 +1,5 @@
 import sys
+import os
 
 template = """#!/bin/sh
 
@@ -30,7 +31,9 @@ n_seeds = 10
 
 def gen_job(n, k):
     mkey = f"N{n:03}_K{k:03}"
-    with open(f'job_{mkey}.sh', 'w') as f:
+    if not os.path.exists('jobs'):
+        os.makedirs('jobs')
+    with open(f'jobs/job_{mkey}.sh', 'w') as f:
         f.write(template.format(mkey=mkey, n=n, k=k, n_seeds=n_seeds))
 
 range_n = [8, 16, 32, 64, 128]
