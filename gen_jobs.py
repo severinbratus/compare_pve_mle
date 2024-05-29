@@ -29,7 +29,7 @@ python -m pip install --user jax optax ray[tune] flax PyDTMC
 
 
 cd compare_pve_mle
-srun python exp2.py {n} {k} {n_seeds}> out_{mkey}.log
+srun python exp2.py {n} {k} {n_seeds} > out_{mkey}.log
 """
 
 n_seeds = 10
