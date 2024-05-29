@@ -1,8 +1,12 @@
-from collections import namedtuple
 import pickle
 import os
 import time
+
 from functools import wraps
+from collections import namedtuple
+
+import numpy as np
+
 
 PveData = namedtuple('PveData', ['train', 'test'])
 
@@ -30,4 +34,11 @@ def time_it(func):
         print(f"Function '{func.__name__}' took {elapsed_time:.4f} seconds to complete.")
         return result
     return wrapper
+
+
+def are_distinct(array):
+    reshaped = array.reshape(array.shape[0], -1)
+    unique = np.unique(reshaped, axis=0)
+    return unique.shape[0] == array.shape[0]
+
 

@@ -2,7 +2,7 @@ import jax
 import jax.numpy as jnp
 import jax.random as jrng
 import optax
-from ray import tune
+# from ray import tune
 import random
 import numpy as np
 import pickle

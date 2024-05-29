@@ -3,7 +3,7 @@ import jax.numpy as jnp
 import jax.random as jrng
 import optax
 
-from ray import tune
+# from ray import tune
 
 import random
 import numpy as np
@@ -39,8 +39,11 @@ def compare_pve_mle(config):
 
     # collect policies and values 
     if not config['use_vip']:
-        policies, values = policies_module.collect_random_policies(
-            config['n_policies'], ve_policy_mode, num_ve_steps, num_states, num_actions, true_r, true_p, config['gamma'])
+        while 1:
+            policies, values = policies_module.collect_random_policies(
+                config['n_policies'], ve_policy_mode, num_ve_steps, num_states, num_actions, true_r, true_p, config['gamma'])
+            if are_distinct(policies):
+                break
     else:
         policies, values = policies_module.collect_iteration_policies(
             1000, 100, ve_policy_mode, num_ve_steps, num_states, num_actions, true_r, true_p, config['gamma'])
@@ -274,7 +277,7 @@ def main2():
 
     n = config['n_policies'] = int(sys.argv[1])
     k = config['model_rank'] = int(sys.argv[2])
-    config['seed'] = int(sys.argv[3])
+    config['seed'] = seed = int(sys.argv[3])
     if len(sys.argv) > 4:
         config['mle_n_iters'] = config['pve_n_iters'] = int(sys.argv[4])
     
