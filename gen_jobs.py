@@ -9,7 +9,7 @@ template = """#!/bin/sh
 
 #SBATCH --job-name=N{n:03}K{k:03}S{s:03}{postfix}
 #SBATCH --partition={partition}
-#SBATCH --account=innovation
+#SBATCH --account={account}
 #SBATCH --time=03:55:00
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
@@ -31,6 +31,9 @@ cd compare_pve_mle
 srun python exp2.py {n} {k} {s} > out_{jkey}.log
 """
 
+acc_flag = int(os.getenv('ACC', '0'))
+account = 'education-eemcs-courses-cse3000' if acc_flag else 'innovation'
+
 n_seeds = 10
 
 def gen_job(n, k, s):
@@ -46,7 +49,9 @@ def gen_job(n, k, s):
         postfix = 'cpu'
         gpus_per_task_line = ''
 
-    text = template.format(jkey=jkey, n=n, k=k, s=n, partition=partition, postfix=postfix, gpus_per_task_line=gpus_per_task_line)
+    text = template.format(jkey=jkey, n=n, k=k, s=n,
+                           partition=partition, postfix=postfix, gpus_per_task_line=gpus_per_task_line,
+                           account=account)
     with open(f'jobs/job_{jkey}.sh', 'w') as f:
         f.write(text)
 
