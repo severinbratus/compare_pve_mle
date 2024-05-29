@@ -49,7 +49,7 @@ def gen_job(n, k, s):
         postfix = 'cpu'
         gpus_per_task_line = ''
 
-    text = template.format(jkey=jkey, n=n, k=k, s=n,
+    text = template.format(jkey=jkey, n=n, k=k, s=s,
                            partition=partition, postfix=postfix, gpus_per_task_line=gpus_per_task_line,
                            account=account)
     with open(f'jobs/job_{jkey}.sh', 'w') as f:
