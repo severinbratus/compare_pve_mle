@@ -274,22 +274,15 @@ def main2():
 
     n = config['n_policies'] = int(sys.argv[1])
     k = config['model_rank'] = int(sys.argv[2])
-    config['n_seeds'] = n_seeds = int(sys.argv[3])
+    config['seed'] = int(sys.argv[3])
     if len(sys.argv) > 4:
         config['mle_n_iters'] = config['pve_n_iters'] = int(sys.argv[4])
     
     # local_dir, seed = sys.argv[1:]
     # seed = int(seed)
-    seeds = list(range(n_seeds))
-    results = []
-    for seed in seeds:
-        print()
-        print(f'{seed=}')
-        config['seed'] = seed
-        result = compare_pve_mle(config)
-        results.append(result)
-    key = f'N{n:03}_K{k:03}'
-    dump(results, f'results_{key}_S{n_seeds:03}')
+    result = compare_pve_mle(config)
+    key = f'N{n:03}_K{k:03}_S{seed:03}'
+    dump(result, f'result_{key}')
 
     # num_samples = 10
     # analysis = tune.run(run_experiment_2,
