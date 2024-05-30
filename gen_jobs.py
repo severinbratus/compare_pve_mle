@@ -10,7 +10,7 @@ template = """#!/bin/sh
 #SBATCH --job-name=N{n:03}K{k:03}S{s:03}{postfix}
 #SBATCH --partition={partition}
 #SBATCH --account={account}
-#SBATCH --time=03:55:00
+#SBATCH --time=01:00:00
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem-per-cpu=1GB
@@ -34,13 +34,11 @@ srun python exp2.py {n} {k} {s} > out_{jkey}.log
 acc_flag = int(os.getenv('ACC', '0'))
 account = 'education-eemcs-courses-cse3000' if acc_flag else 'innovation'
 
-n_seeds = 10
-
 def gen_job(n, k, s):
     jkey = f"N{n:03}_K{k:03}_S{s:03}"
     if not os.path.exists('jobs'):
         os.makedirs('jobs')
-    if random.random() < .10:
+    if random.random() < .0:
         partition = 'gpu'
         postfix = 'gpu'
         gpus_per_task_line = gpus_per_task_one
