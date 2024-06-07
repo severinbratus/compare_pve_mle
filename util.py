@@ -19,9 +19,19 @@ def dump(value, fname):
 
 
 def load(fname):
-    with open(f"pickled/{fname}.pickle", 'rb') as f:
-        value = pickle.load(f)
-    return value
+    loadr(f"pickled/{fname}.pickle")
+
+
+def loadr(fname):
+    with open(fname, 'rb') as f:
+        return pickle.load(f)
+
+
+def loadn(fname):
+    if not os.path.exists(fname):
+        return None
+    else:
+        return loadr(fname)
 
 
 def time_it(func):
@@ -40,5 +50,6 @@ def are_distinct(array):
     reshaped = array.reshape(array.shape[0], -1)
     unique = np.unique(reshaped, axis=0)
     return unique.shape[0] == array.shape[0]
+
 
 
