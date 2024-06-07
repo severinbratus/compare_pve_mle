@@ -34,7 +34,7 @@ srun python exp2.py {n} {k} {s} > out_{jkey}.log
 acc_flag = int(os.getenv('ACC', '0'))
 account = 'education-eemcs-courses-cse3000' if acc_flag else 'innovation'
 
-def gen_job(n, k, s):
+def gen_job(n, k, s, jobs_dir='jobs'):
     jkey = f"N{n:03}_K{k:03}_S{s:03}"
     if not os.path.exists('jobs'):
         os.makedirs('jobs')
@@ -50,7 +50,7 @@ def gen_job(n, k, s):
     text = template.format(jkey=jkey, n=n, k=k, s=s,
                            partition=partition, postfix=postfix, gpus_per_task_line=gpus_per_task_line,
                            account=account)
-    with open(f'jobs/job_{jkey}.sh', 'w') as f:
+    with open(f'{jobs_dir}/job_{jkey}.sh', 'w') as f:
         f.write(text)
 
 range_n = [8, 16, 32, 64, 128]
@@ -59,15 +59,18 @@ range_s = list(range(10))
 
 args = sys.argv[1:]
 
-if args:
+if len(args) == 3:
     n, k, s = args
     n = int(n)
     k = int(k)
     s = int(s)
     gen_job(n, k, s)
 else:
+    j = 'jobs'
+    if len(args) == 1:
+        j = args[0]
     for n in range_n:
         for k in range_k:
             for s in range_s:
-                gen_job(n, k, s)
+                gen_job(n, k, s, jobs_dir=j)
             
